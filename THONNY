@@ -1,0 +1,61 @@
+from machine import UART, Pin
+import time
+
+# 👉 Inicializa UART con pines RX y TX del ESP32-C3
+uart = UART(1, baudrate=115200, tx=Pin(21), rx=Pin(20))
+time.sleep(1)
+
+# 👉 Función para enviar comandos AT al módulo LoRa (Reyax)
+def configurar_reyax():
+    comandos = [
+        "AT+ADDRESS=3",
+        "AT+NETWORKID=5",
+        "AT+PARAMETER=9,7,1,12"
+    ]
+    for cmd in comandos:
+        uart.write((cmd + "\r\n").encode())
+        time.sleep(0.3)
+        while uart.any():
+            uart.readline()  # 👉 Limpia cualquier respuesta
+
+configurar_reyax()
+print("\n📡 ESP32-C3 listo. Esperando datos LoRa...\n")
+
+# 👉 Bucle principal: espera y procesa datos recibidos
+while True:
+    if uart.any():
+        try:
+            linea = uart.readline().decode().strip()
+            if linea.startswith("+RCV="):  # 👉 Llega un mensaje válido
+
+                partes = linea.split(",")
+
+                temp = None
+                humedad = None
+                riego = None
+
+                # 👉 Procesa cada parte del mensaje
+                for parte in partes:
+                    if parte.startswith("T:"):
+                        try:
+                            temp = float(parte[2:].replace("°C", "").replace("%", ""))
+                        except:
+                            print("⚠️ Error al convertir temperatura:", parte[2:])
+                    elif parte.startswith("H:"):
+                        try:
+                            valor = parte[2:].replace("%", "").strip()
+                            humedad = int(valor)
+                        except:
+                            print("⚠️ Error al convertir humedad:", parte[2:])
+                    elif parte.startswith("R:"):
+                        riego = parte[2:].strip()
+
+                # 👉 Si todo se recibió bien, se muestra en consola
+                if temp is not None and humedad is not None and riego is not None:
+                    print(f"TEMP:{temp}")
+                    print(f"HUM:{humedad}")
+                    print(f"RIEGO:{riego}")
+        except Exception as e:
+            print("⚠️ Error:", e)
+
+    time.sleep(0.1)  # 👉 Espera pequeña para no saturar CPU
