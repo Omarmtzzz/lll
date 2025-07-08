@@ -1,0 +1,94 @@
+Imports System.IO.Ports
+Imports System.Threading.Tasks
+
+Public Class Form1
+    Dim PuertoSerie As SerialPort
+
+    ' 👉 Al iniciar el formulario, se detectan los puertos disponibles y se muestra el estado inicial
+    Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
+        cmbPuertos.Items.AddRange(SerialPort.GetPortNames()) ' Carga puertos COM disponibles
+        If cmbPuertos.Items.Count > 0 Then cmbPuertos.SelectedIndex = 0
+
+        lblEstado.Text = "No conectado"
+        lblTemperatura.Text = "Temp: ---"
+        lblHumedad.Text = "Humedad: ---"
+        lblEstadoSistema.Text = "DESCONOCIDO"
+        lblEstadoSistema.ForeColor = Color.Gray
+        lblApagado.Visible = False
+
+        picLlave.Image = My.Resources.llave_cerrada ' Imagen inicial: cerrada
+    End Sub
+
+    ' 👉 Al presionar el botón conectar, se abre el puerto serie
+    Private Sub btnConectar_Click(sender As Object, e As EventArgs) Handles btnConectar.Click
+        Try
+            PuertoSerie = New SerialPort(cmbPuertos.SelectedItem.ToString(), 115200)
+            AddHandler PuertoSerie.DataReceived, AddressOf DatosRecibidos
+            PuertoSerie.Open()
+            lblEstado.Text = "Conectado"
+        Catch ex As Exception
+            MessageBox.Show("Error al conectar: " & ex.Message)
+        End Try
+    End Sub
+
+    ' 👉 Al presionar el botón desconectar, se cierra el puerto serie
+    Private Sub btnDesconectar_Click(sender As Object, e As EventArgs) Handles btnDesconectar.Click
+        Try
+            If PuertoSerie IsNot Nothing AndAlso PuertoSerie.IsOpen Then
+                RemoveHandler PuertoSerie.DataReceived, AddressOf DatosRecibidos
+                PuertoSerie.Close()
+                lblEstado.Text = "Desconectado"
+            End If
+        Catch ex As Exception
+            MessageBox.Show("Error al desconectar: " & ex.Message)
+        End Try
+    End Sub
+
+    ' 👉 Cuando llegan datos del LoRa por serial, se procesan aquí
+    Private Sub DatosRecibidos(sender As Object, e As SerialDataReceivedEventArgs)
+        Try
+            Dim data As String = PuertoSerie.ReadLine().Trim()
+            Me.Invoke(Sub()
+                          ' 👉 Si el mensaje es temperatura
+                          If data.StartsWith("TEMP:") Then
+                              lblTemperatura.Text = "Temp: " & data.Substring(5) & " °C"
+
+                          ' 👉 Si el mensaje es humedad
+                          ElseIf data.StartsWith("HUM:") Then
+                              lblHumedad.Text = "Humedad: " & data.Substring(4)
+                              If Not lblHumedad.Text.EndsWith("%") Then
+                                  lblHumedad.Text &= "%"
+                              End If
+
+                          ' 👉 Si el mensaje es estado del riego
+                          ElseIf data.StartsWith("RIEGO:") Then
+                              Dim estado = data.Substring(6)
+
+                              If estado = "ON" Then
+                                  lblEstadoSistema.Text = "ENCENDIDA"
+                                  lblEstadoSistema.ForeColor = Color.Green
+                                  lblEstadoSistema.Visible = True
+                                  lblApagado.Visible = False
+                                  picLlave.Image = My.Resources.llave_abierta
+                              Else
+                                  lblEstadoSistema.Visible = False
+                                  lblApagado.Visible = True
+                                  picLlave.Image = My.Resources.llave_cerrada
+                              End If
+                          End If
+                      End Sub)
+        Catch
+            ' 👉 Si llega basura por serial, se ignora
+        End Try
+    End Sub
+
+    ' 👉 Botón para simular visualmente que la llave está abierta
+    Private Sub btnEncender_Click(sender As Object, e As EventArgs) Handles btnEncender.Click
+        picLlave.Image = My.Resources.llave_abierta
+    End Sub
+
+    ' 👉 Botón para simular visualmente que la llave está cerrada
+    Private Sub btnApagar_Click(sender As Object, e As EventArgs) Handles btnApagar.Click
+        picLlave.Image = My.Resources.llave_cerrada
+    End Sub
+End Class
