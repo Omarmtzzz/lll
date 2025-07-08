@@ -1,0 +1,74 @@
+//CODIGO DE ARDUINO
+#include <SoftwareSerial.h>
+
+SoftwareSerial Reyax(10, 11); // RX, TX del LoRa
+
+const int pinLM35 = A0;             // Sensor de temperatura
+const int pinSensorHumedad = A1;    // Sensor de humedad de suelo
+const int pinRele = 7;              // Control de la bomba
+const int pinLEDverde = 5;          // LED indica bomba activa
+const int pinLEDrojo = 6;           // LED indica bomba apagada
+
+int umbralHumedad = 40; // Porcentaje mínimo para activar riego
+bool riegoActivo = false;
+
+void setup() {
+  Serial.begin(9600);       // Comunicación con PC
+  Reyax.begin(115200);      // Comunicación con módulo LoRa
+  delay(1000);
+
+  // 👉 Establece dirección, red y parámetros del módulo LoRa
+  Reyax.println("AT+ADDRESS=4");
+  delay(200);
+  Reyax.println("AT+NETWORKID=5");
+  delay(200);
+  Reyax.println("AT+PARAMETER=12,7,1,4");
+  delay(500);
+
+  // 👉 Configura los pines como salidas
+  pinMode(pinRele, OUTPUT);
+  pinMode(pinLEDverde, OUTPUT);
+  pinMode(pinLEDrojo, OUTPUT);
+
+  // 👉 Estado inicial: bomba apagada, LED rojo encendido
+  digitalWrite(pinRele, LOW);
+  digitalWrite(pinLEDverde, LOW);
+  digitalWrite(pinLEDrojo, HIGH); // Bomba apagada = rojo prendido
+
+  Serial.println("✅ Emisor listo con LM35 + sensor humedad real + porcentaje");
+}
+
+void loop() {
+  // 👉 Lee la temperatura del LM35
+  int lecturaTemp = analogRead(pinLM35);
+  float voltaje = (lecturaTemp * 5.0) / 1023.0;
+  float tempC = voltaje * 100.0;
+
+  // 👉 Lee la humedad y convierte a porcentaje
+  int lecturaBruta = analogRead(pinSensorHumedad);
+  int porcentajeHumedad = map(lecturaBruta, 1023, 0, 0, 100); // Invertimos lectura
+
+  // 👉 Si la humedad supera el umbral, activa el riego
+  if (porcentajeHumedad > umbralHumedad) {
+    digitalWrite(pinRele, HIGH);        // Prende la bomba
+    digitalWrite(pinLEDverde, HIGH);    // LED verde encendido
+    digitalWrite(pinLEDrojo, LOW);
+    riegoActivo = true;
+  } else {
+    digitalWrite(pinRele, LOW);         // Apaga la bomba
+    digitalWrite(pinLEDverde, LOW);
+    digitalWrite(pinLEDrojo, HIGH);     // LED rojo encendido
+    riegoActivo = false;
+  }
+
+  // 👉 Arma mensaje con temperatura, humedad y estado de la bomba
+  String estado = riegoActivo ? "ON" : "OFF";
+  String mensaje = "T:" + String(tempC, 1) + ",H:" + String(porcentajeHumedad) + "%,R:" + estado + "\r\n";
+  String comando = "AT+SEND=3," + String(mensaje.length()) + "," + mensaje;
+
+  // 👉 Envía los datos al receptor por LoRa
+  Reyax.println(comando);
+  Serial.println("📤 Enviado: " + mensaje);
+
+  delay(3000); // 👉 Espera 3 segundos antes del siguiente ciclo
+}
